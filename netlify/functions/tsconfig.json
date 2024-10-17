@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "es2018",
+    "module": "commonjs",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "lib": ["es2018", "esnext.asynciterable"],
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "outDir": "../netlify/functions",
+    "rootDir": ".",
+    "verbatimModuleSyntax": false
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["node_modules"]
+}

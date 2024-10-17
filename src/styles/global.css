@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.blinkpay-logo {
+  max-width: 100px;
+  width: 100%;
+  height: auto;
+}

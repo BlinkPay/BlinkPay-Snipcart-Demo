@@ -1,0 +1,78 @@
+---
+import "../styles/global.css";
+const snipcartApiKey = import.meta.env.PUBLIC_SNIPCART_API_KEY;
+const businessName = import.meta.env.PUBLIC_BUSINESS_NAME;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{businessName}</title>
+    <style>
+      html.loading {
+        visibility: hidden;
+        opacity: 0;
+      }
+    </style>
+    <script>
+      // Immediately hide the content
+      document.documentElement.classList.add("loading");
+    </script>
+  </head>
+  <body class="font-sans bg-gray-50">
+    <slot />
+  </body>
+  <script define:vars={{ snipcartApiKey }}>
+    window.SnipcartSettings = {
+      publicApiKey: snipcartApiKey,
+      loadStrategy: "on-user-interaction",
+      currency: "nzd",
+      modalStyle: "side",
+      templatesUrl: "/snipcart-templates",
+    };
+
+    // prettier-ignore
+    (function(){var c,d;(d=(c=window.SnipcartSettings).version)!=null||(c.version="3.0");var s,S;(S=(s=window.SnipcartSettings).timeoutDuration)!=null||(s.timeoutDuration=2750);var l,p;(p=(l=window.SnipcartSettings).domain)!=null||(l.domain="cdn.snipcart.com");var w,u;(u=(w=window.SnipcartSettings).protocol)!=null||(w.protocol="https");var m,g;(g=(m=window.SnipcartSettings).loadCSS)!=null||(m.loadCSS=!0);var y=window.SnipcartSettings.version.includes("v3.0.0-ci")||window.SnipcartSettings.version!="3.0"&&window.SnipcartSettings.version.localeCompare("3.4.0",void 0,{numeric:!0,sensitivity:"base"})===-1,f=["focus","mouseover","touchmove","scroll","keydown"];window.LoadSnipcart=o;document.readyState==="loading"?document.addEventListener("DOMContentLoaded",r):r();function r(){window.SnipcartSettings.loadStrategy?window.SnipcartSettings.loadStrategy==="on-user-interaction"&&(f.forEach(function(t){return document.addEventListener(t,o)}),setTimeout(o,window.SnipcartSettings.timeoutDuration)):o()}var a=!1;function o(){if(a)return;a=!0;let t=document.getElementsByTagName("head")[0],n=document.querySelector("#snipcart"),i=document.querySelector('src[src^="'.concat(window.SnipcartSettings.protocol,"://").concat(window.SnipcartSettings.domain,'"][src$="snipcart.js"]')),e=document.querySelector('link[href^="'.concat(window.SnipcartSettings.protocol,"://").concat(window.SnipcartSettings.domain,'"][href$="snipcart.css"]'));n||(n=document.createElement("div"),n.id="snipcart",n.setAttribute("hidden","true"),document.body.appendChild(n)),h(n),i||(i=document.createElement("script"),i.src="".concat(window.SnipcartSettings.protocol,"://").concat(window.SnipcartSettings.domain,"/themes/v").concat(window.SnipcartSettings.version,"/default/snipcart.js"),i.async=!0,t.appendChild(i)),!e&&window.SnipcartSettings.loadCSS&&(e=document.createElement("link"),e.rel="stylesheet",e.type="text/css",e.href="".concat(window.SnipcartSettings.protocol,"://").concat(window.SnipcartSettings.domain,"/themes/v").concat(window.SnipcartSettings.version,"/default/snipcart.css"),t.prepend(e)),f.forEach(function(v){return document.removeEventListener(v,o)})}function h(t){!y||(t.dataset.apiKey=window.SnipcartSettings.publicApiKey,window.SnipcartSettings.addProductBehavior&&(t.dataset.configAddProductBehavior=window.SnipcartSettings.addProductBehavior),window.SnipcartSettings.modalStyle&&(t.dataset.configModalStyle=window.SnipcartSettings.modalStyle),window.SnipcartSettings.currency&&(t.dataset.currency=window.SnipcartSettings.currency),window.SnipcartSettings.templatesUrl&&(t.dataset.templatesUrl=window.SnipcartSettings.templatesUrl))}})();
+
+    // Function to remove loading class and show content
+    function showContent() {
+      document.documentElement.classList.remove("loading");
+      document.documentElement.style.visibility = "visible";
+      document.documentElement.style.opacity = "1";
+      document.documentElement.style.transition = "opacity 0.3s ease-in-out";
+    }
+
+    // Wait for everything to load
+    if (document.readyState === "complete") {
+      showContent();
+    } else {
+      window.addEventListener("load", showContent);
+    }
+
+    // Custom configuration to filter payment methods
+    document.addEventListener("snipcart.ready", function () {
+      Snipcart.api.session.setLanguage("en");
+
+      const style = document.createElement("style");
+      // Remove credit cards and replace with BlinkPay
+      style.textContent = `
+      .snipcart-payment__form-container {
+        display: none !important;
+      }
+      .snipcart-form__separator {
+        display: none !important;
+      }
+      .snipcart-payment-methods-list-item button[title="Checkout with Credit card"] {
+        display: none !important;
+      }
+    `;
+
+      // Append the style element to the head of the document
+      document.head.appendChild(style);
+    });
+  </script>
+  <div hidden id="snipcart" data-config-modal-style="side"></div>
+</html>

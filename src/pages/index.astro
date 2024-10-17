@@ -1,0 +1,72 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import ProductGrid from "../components/ProductGrid.astro";
+import Product from "../components/Product.astro";
+import Cart from "../components/Cart.astro";
+
+const businessName = import.meta.env.PUBLIC_BUSINESS_NAME;
+---
+
+<BaseLayout>
+  <main class="container mx-auto px-4 py-12">
+    <section class="text-center mb-12">
+      <h1 class="text-5xl font-bold mb-4 text-gray-800">
+        Welcome to {businessName}
+      </h1>
+      <p class="text-xl text-gray-600">
+        Indulge in our delicious, health-conscious cakes made with love!
+      </p>
+    </section>
+
+    <Cart />
+
+    <section class="my-12">
+      <h2 class="text-3xl font-semibold mb-6 text-gray-800">
+        Our Delightful Creations
+      </h2>
+      <ProductGrid>
+        <Product
+          id="vegan-chocolate-cake"
+          name="Vegan Chocolate Cake"
+          price="35.00"
+          description="Rich and moist, 100% vegan chocolate cake that melts in your mouth. Perfect for chocolate lovers!"
+          image="/choc.png"
+        />
+        <Product
+          id="gluten-free-lemon-cake"
+          name="Gluten-Free Lemon Cake"
+          price="32.00"
+          description="Zesty and refreshing gluten-free lemon cake. Light, fluffy, and bursting with citrus flavor!"
+          image="/lemon.webp"
+        />
+        <Product
+          id="keto-redvelvet-cheesecake"
+          name="Keto Strawberry Cheesecake"
+          price="38.00"
+          description="Low-carb, keto-friendly strawberry cheesecake. Creamy, sweet, and guilt-free!"
+          image="/redvelvet.webp"
+        />
+        <Product
+          id="sugar-free-carrot-cake"
+          name="Sugar-Free Carrot Cake"
+          price="33.00"
+          description="Moist and flavorful carrot cake made without added sugars. Topped with cream cheese frosting!"
+          image="/specality.webp"
+        />
+      </ProductGrid>
+    </section>
+
+    <section class="bg-green-50 p-8 rounded-lg mt-12">
+      <h2 class="text-3xl font-semibold mb-4 text-gray-800">
+        Why Choose {businessName}?
+      </h2>
+      <ul class="list-disc list-inside text-gray-700 space-y-2">
+        <li>All-natural ingredients</li>
+        <li>Options for various dietary needs</li>
+        <li>Freshly baked daily</li>
+        <li>Local and organic produce when possible</li>
+        <li>Eco-friendly packaging</li>
+      </ul>
+    </section>
+  </main>
+</BaseLayout>

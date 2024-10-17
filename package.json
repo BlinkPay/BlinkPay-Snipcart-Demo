@@ -1,0 +1,41 @@
+{
+  "name": "blinkpay-snipcart-demo",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro check && astro build && npx tailwindcss -i ./src/styles/global.css -o ./dist/styles/global.css && npm run build:functions",
+    "build:functions": "tsc --project netlify/functions/tsconfig.json",
+    "netlify-dev": "netlify build && netlify dev",
+    "netlify-build": "netlify build",
+    "netlify-deploy-dev": "netlify build && netlify deploy",
+    "netlify-deploy-prod": "netlify build && netlify deploy --prod",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,astro,json,md,css,scss}\""
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.4",
+    "@astrojs/netlify": "^5.5.3",
+    "@astrojs/tailwind": "^5.1.2",
+    "@netlify/functions": "^2.8.2",
+    "@tailwindcss/forms": "^0.5.9",
+    "@tailwindcss/typography": "^0.5.15",
+    "astro": "^4.16.0",
+    "aws-lambda": "^1.0.7",
+    "axios": "^1.7.7",
+    "blink-debit-api-client-node": "^1.0.0",
+    "node-fetch": "^3.3.2",
+    "tailwindcss": "^3.4.13"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^22.7.5",
+    "@types/uuid": "^10.0.0",
+    "autoprefixer": "^10.4.20",
+    "netlify-cli": "^17.37.0",
+    "postcss": "^8.4.47",
+    "prettier": "^3.3.3",
+    "prettier-plugin-astro": "^0.14.1",
+    "typescript": "^5.6.3"
+  }
+}

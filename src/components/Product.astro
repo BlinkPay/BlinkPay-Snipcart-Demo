@@ -1,0 +1,29 @@
+---
+const { id, name, price, description, image } = Astro.props;
+---
+
+<div
+  class="bg-white p-4 shadow rounded-lg hover:shadow-xl transition-all duration-300"
+>
+  <div class="w-full h-48 mb-4 overflow-hidden rounded-md">
+    <img
+      src={image}
+      alt={name}
+      class="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
+    />
+  </div>
+  <h2 class="text-xl font-bold mb-2 text-gray-800">{name}</h2>
+  <p class="text-gray-600 mb-4 text-sm">{description}</p>
+  <p class="text-lg text-green-600 font-semibold mb-4">${price}</p>
+  <button
+    class="snipcart-add-item bg-green-500 text-white px-4 py-2 rounded-full w-full hover:bg-green-600 transition-colors"
+    data-item-id={id}
+    data-item-price={price}
+    data-item-url="/"
+    data-item-description={description}
+    data-item-image={image}
+    data-item-name={name}
+  >
+    Add to Cart
+  </button>
+</div>
