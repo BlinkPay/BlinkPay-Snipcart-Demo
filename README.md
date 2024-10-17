@@ -25,24 +25,20 @@ Ensure you have the following tools installed:
 - [Snipcart Account](https://snipcart.com/) (to manage your e-commerce)
 - [BlinkPay Account](https://blinkpay.co.nz/) (to process payments)
 
-### Installation
+## Installation
 
-**Clone the repository:**
+### Clone the repository:
 
 ```bash
 git clone https://github.com/yourusername/astro-cake-shop.git
 cd astro-cake-shop
 ```
 
-**Install dependencies:**
+### Set Up
 
-```bash
-npm install
-```
+First, set up environment variables:
 
-Set up environment variables:
-
-Create a .env file at the root of your project and add the following environment variables:
+Create a `.env` file at the root of your project and add the following environment variables:
 
 ```bash
 PUBLIC_BUSINESS_NAME=<your_business_name>
@@ -55,79 +51,34 @@ PUBLIC_SNIPCART_API_KEY=<your_snipcart_public_api_key>
 SNIPCART_GATEWAY_API_KEY=<your_snipcart_custom_gateway_api_key>
 ```
 
-Running the Application
-To run the application locally:
+Install the modules and run the netlify set-up
+```bash
+npm install
+npx netlify init 
+```
+## Run and Deploy
 
-bash
-npm run dev
-Visit http://localhost:3000 to view the demo.
+### Running the Application
 
-Build for Production
-To build and deploy the project:
+To run the application locally, including netlify functions:
 
 ```bash
-npm run build
-netlify deploy --prod
+npm run netlify-dev
 ```
 
-This command will build the project and deploy it to your Netlify site.
+### Deployment
 
-BlinkPay Integration
-The integration with BlinkPay uses the blink-debit-api-client-node package to handle the payment process. Here's a brief example of how to process a payment using BlinkPay in a Netlify function:
+To build and deploy the project to production:
 
-```typescript
-import { BlinkPayApi } from "blink-debit-api-client-node";
-
-export async function handler(event) {
-  const blinkpay = new BlinkPayApi({
-    clientId: process.env.BLINKPAY_CLIENT_ID,
-    clientSecret: process.env.BLINKPAY_SECRET,
-  });
-
-  const paymentData = JSON.parse(event.body);
-
-  try {
-    const response = await blinkpay.createPayment({
-      amount: paymentData.amount,
-      currency: "NZD",
-      reference: paymentData.reference,
-      callbackUrl: process.env.BLINKPAY_CALLBACK_URL,
-    });
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify(response),
-    };
-  } catch (error) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: error.message }),
-    };
-  }
-}
+```bash
+npm run netlify-deploy-dev
 ```
 
-This function processes payments by sending the necessary data to the BlinkPay API and returning the result to the frontend.
+To build and deploy the project to production:
 
-Snipcart Setup
-Snipcart is used to handle the shopping cart on the front-end. In your HTML or Astro component, include the following:
-
-```html
-<div id="snipcart" data-api-key="<your_snipcart_api_key>" hidden></div>
-
-<button
-  class="snipcart-add-item"
-  data-item-id="cake-123"
-  data-item-name="Delicious Chocolate Cake"
-  data-item-price="19.99"
-  data-item-url="/cakes/delicious-chocolate-cake"
-  data-item-description="A mouth-watering chocolate cake that melts in your mouth."
->
-  Add to Cart
-</button>
+```bash
+npm run netlify-deploy-prod
 ```
-
-The data-api-key will connect Snipcart to your Snipcart account, and the button allows users to add products to their cart.
 
 ## Contributions
 
