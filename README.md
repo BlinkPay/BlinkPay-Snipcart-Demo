@@ -88,14 +88,16 @@ You will then need to configure Snipcart Custom Payment Gateway in your Snipcart
 
 1. Head to your Snipcart dashboard and navigate to `Store Configurations`/`Account`/`API Keys`
 2. Toggle `Custom Payment Gateway` to `ON` and hit `Configure`
-3. Enter your netlify function URL for payment method under `Payment Methods API URL`. In this project, this likley to be `https://YOUR-SITE-NAME.netlify.app/.netlify/functions/payment-method` 
+3. Enter your netlify function URL for payment method under `Payment Methods API URL`. In this project, this likely to be `https://YOUR-SITE-NAME.netlify.app/.netlify/functions/payment-method` 
 4. Copy your Snipcart Gateway API Key for your `.env` variables as described below
 
 ## Setting up `.env`
 
 Now you are ready to create a `.env` file at the root of your project.
 
-Note that your Blinkpay Debit URL depends if you are working in a sandbox or production environemnt. Use `https://sandbox.debit.blinkpay.co.nz` for non-production, and `https://debit.blinkpay.co.nz` for production environments.
+Note that your Blinkpay Debit URL depends if you are working in a sandbox or production environment. Use:
+- For Non-production, use: `https://sandbox.debit.blinkpay.co.nz`
+- For production, use: `https://debit.blinkpay.co.nz`
 
 Now you are ready to create a `.env` file at the root of your project and add the following environment variables:
 
@@ -116,7 +118,7 @@ Now that you have these variables collected, copy these same variables into Netl
 
 ## Initial Netlify Deployment
 
-Before you will able to develop your store locally, you will first need to run a production netlify deploy. This is because Snipcart will be access the payment methods endpoint from the netlify site, even if you are only running the application locally.
+Before you will able to develop your store locally, you will first need to run a production netlify deploy. This is because Snipcart will be accessing our `/.netlify/functions/payment-method` endpoint from the hosted netlify site, even if you are only running the application locally.
 
 ```bash
 npm run netlify-deploy-prod
