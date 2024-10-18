@@ -10,7 +10,7 @@ import {
   type Pcr,
 } from "blink-debit-api-client-node";
 
-export const handler = async function (event: any, context: any) {
+export const handler = async function (event: any) {
   console.log("Received request:", JSON.stringify(event));
 
   try {
@@ -38,24 +38,26 @@ export const handler = async function (event: any, context: any) {
     const session: any = await sessionResponse.json();
     console.log("Session data:", session);
 
-    const paymentSessionId = session.id;
     const invoice = session.invoice;
     const returnUrl = `https://${event.headers.host}/payments/payment-return`;
     const amount = invoice.amount.toFixed(2);
     const particulars = (process.env.PUBLIC_BUSINESS_NAME ?? '').slice(0, 12); // Will be displayed on the bank statement, limit 12 chars
-    const code = ""; // Will be displayed on the bank statement, limit 12 chars
-    const reference = "Thank You"; // Will be displayed on the bank statement, limit 12 chars
+    const code = "BlinkPay"; // Will be displayed on the bank statement, limit 12 chars
+    const randomOrderNo = Math.floor(Math.random() * 900000) + 100000;
+    const reference = "PAY-" + randomOrderNo; // Will be displayed on the bank statement, limit 12 chars
 
     console.log("Creating quick payment with:", {
       returnUrl,
       amount,
       particulars,
+      code,
       reference,
     });
     const redirectUri = await createQuickPayment(
       returnUrl,
       amount,
       particulars,
+      code,
       reference,
     );
 
@@ -84,6 +86,7 @@ async function createQuickPayment(
   returnUrl: string,
   amount: string,
   particulars: string,
+  code: string,
   reference: string,
 ): Promise<string> {
   try {
@@ -102,6 +105,7 @@ async function createQuickPayment(
       } as Amount,
       pcr: {
         particulars: particulars,
+        code: code,
         reference: reference,
       } as Pcr,
     };

@@ -1,26 +1,27 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
-// Get the token from URL params
-const token = Astro.url.searchParams.get("publicToken");
 ---
 
 <BaseLayout>
-  <div id="redirect-container" class="flex flex-col items-center">
+  <div id="redirect-container" class="flex flex-col items-center justify-center min-h-screen mx-auto">
     <p class="text-lg mb-4">Redirecting to payment gateway...</p>
-    <div class="w-12 h-12 border-t-4 border-blue-500 rounded-full animate-spin">
-    </div>
+    <div class="w-12 h-12 border-t-4 border-blue-500 rounded-full animate-spin"></div>
   </div>
 
-  <script define:vars={{ token }}>
+  <!-- Status container to show success or error messages -->
+  <div id="status-container" class="mt-6 text-center"></div>
+
+  <script>
     let redirectUri = "";
     let error = "";
 
-    async function processCheckout() {
-      // console.log('Token:', token);
+    // Get the publicToken from the URL query string
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('publicToken');
 
+    async function processCheckout() {
       if (token) {
         try {
-          // console.log(`Attempting to fetch from checkout function: ${window.location.host}`);
           const response = await fetch(
             `https://${window.location.host}/.netlify/functions/checkout`,
             {
@@ -29,50 +30,49 @@ const token = Astro.url.searchParams.get("publicToken");
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({ publicToken: token }),
-            },
+            }
           );
-
-          console.log("Response status:", response.status);
 
           if (!response.ok) {
             const errorText = await response.text();
-            console.error(
-              `HTTP error! status: ${response.status}, body: ${errorText}`,
-            );
-            throw new Error(`HTTP error! status: ${response.status}`);
+            throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
           }
 
           const result = await response.json();
-          console.log("Result from checkout function:", JSON.stringify(result));
           redirectUri = result.redirectUri;
 
           if (!redirectUri) {
-            console.error("No redirectUri in response");
             throw new Error("No redirect URI provided");
           }
 
           // Save token to localStorage
           localStorage.setItem("snipcartSessionToken", token);
 
-          // Redirect to payment gateway
-          console.log("Preparing to redirect...");
+          // Redirect to payment gateway after a delay
           setTimeout(() => {
-            console.log("Redirecting now...");
             window.location.href = redirectUri;
-          }, 2000); // 2-second delay for spinner visibility
+          }, 2000);
         } catch (err) {
-          console.error("Error in checkout process:", err);
-          error = `Unable to process payment. Error: ${err.message}`;
-          document.getElementById("status-container").innerHTML = `
+          if (err instanceof Error) {
+            error = `Unable to process payment. Error: ${err.message}`;
+          } else {
+            error = "An unknown error occurred.";
+          }
+          const statusContainer = document.getElementById("status-container");
+          if (statusContainer) {
+            statusContainer.innerHTML = `
+              <p class="text-lg text-red-500">${error}</p>
+            `;
+          }
+        }
+      } else {
+        error = "Missing payment token. Please try again.";
+        const statusContainer = document.getElementById("status-container");
+        if (statusContainer) {
+          statusContainer.innerHTML = `
             <p class="text-lg text-red-500">${error}</p>
           `;
         }
-      } else {
-        console.error("No token provided in URL");
-        error = "Missing payment token. Please try again.";
-        document.getElementById("status-container").innerHTML = `
-          <p class="text-lg text-red-500">${error}</p>
-        `;
       }
     }
 

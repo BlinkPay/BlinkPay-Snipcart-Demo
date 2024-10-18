@@ -3,9 +3,7 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
 ---
 
 <BaseLayout>
-  <div
-    class="flex flex-col items-center justify-center min-h-screen bg-gray-100"
-  >
+  <div class="flex flex-col items-center justify-center min-h-screen bg-gray-100">
     <div class="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
       <h1 class="text-2xl font-bold mb-4 text-center text-gray-800">
         Payment Processing
@@ -15,18 +13,13 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
         <p class="mb-4 text-gray-600">
           Processing your payment, please wait...
         </p>
-        <div
-          class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"
-        >
-        </div>
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
       </div>
 
       <div id="result" class="hidden text-center">
-        <p id="resultMessage" class="mb-4 text-lg"></p>
-        <a
-          href="/"
-          class="inline-block bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
-        >
+        <div id="resultMessage" class="mb-4 text-lg flex flex-col items-center">
+        </div>
+        <a href="/" class="inline-block bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors">
           Return to Home
         </a>
       </div>
@@ -41,10 +34,7 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
       localStorage.removeItem("snipcartSessionToken");
 
       if (!publicToken || !cid) {
-        showResult(
-          "Missing required parameters. Please try again.",
-          "text-red-500",
-        );
+        showResult("Missing required parameters. Please try again.", "text-red-500");
         return;
       }
 
@@ -55,48 +45,16 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
         const data = await response.json();
 
         if (response.ok) {
-          showResult(
-            "Payment processed successfully! Your receipt has been emailed to you.",
-            "text-green-500",
-          );
-          clearSnipcartCart();
+          showResult(`Payment processed successfully with reference: ${data.reference}. Your receipt has been emailed to you.`, "neutral");
         } else {
-          showResult(`Payment processing failed`, "text-red-500");
+          showResult("Payment processing failed", "text-red-500");
         }
       } catch (error) {
-        showResult(
-          "An error occurred while processing the payment. Please try again.",
-          "text-red-500",
-        );
+        showResult("An error occurred while processing the payment. Please try again.", "text-red-500");
       }
     }
 
-    function clearSnipcartCart(): void {
-      if (typeof (window as any).Snipcart !== "undefined") {
-        clearCart();
-      } else {
-        document.addEventListener("snipcart.ready", clearCart);
-      }
-    }
-
-    function clearCart(): void {
-      try {
-        const state = (window as any).Snipcart.store.getState();
-        const items = state?.cart?.items?.items;
-        if (Array.isArray(items)) {
-          items.forEach((el) => {
-            if (el && typeof el.uniqueId === "string") {
-              (window as any).Snipcart.api.cart.items.remove(el.uniqueId);
-            }
-          });
-        }
-        console.log("Snipcart cart cleared successfully");
-      } catch (error) {
-        console.error("Error clearing Snipcart cart:", error);
-      }
-    }
-
-    function showResult(message: string, colorClass: string) {
+    function showResult(message: string, type: string) {
       const loadingEl = document.getElementById("loading");
       const resultEl = document.getElementById("result");
       const resultMessageEl = document.getElementById("resultMessage");
@@ -104,8 +62,16 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
       if (loadingEl) loadingEl.classList.add("hidden");
       if (resultEl) resultEl.classList.remove("hidden");
       if (resultMessageEl) {
-        resultMessageEl.textContent = message;
-        resultMessageEl.className = `mb-4 text-lg ${colorClass}`;
+        if (type === "neutral") {
+          resultMessageEl.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-green-500 mt-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            <span class="text-gray-700">${message}</span>
+          `;
+        } else {
+          resultMessageEl.innerHTML = `<span class="${type}">${message}</span>`;
+        }
       }
     }
 

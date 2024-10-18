@@ -25,7 +25,7 @@ const businessName = import.meta.env.PUBLIC_BUSINESS_NAME;
   <body class="font-sans bg-gray-50">
     <slot />
   </body>
-  <script define:vars={{ snipcartApiKey }}>
+  <script is:inline define:vars={{ snipcartApiKey }}>
     window.SnipcartSettings = {
       publicApiKey: snipcartApiKey,
       loadStrategy: "on-user-interaction",
