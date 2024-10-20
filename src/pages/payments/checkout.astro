@@ -3,9 +3,13 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
 ---
 
 <BaseLayout>
-  <div id="redirect-container" class="flex flex-col items-center justify-center min-h-screen mx-auto">
+  <div
+    id="redirect-container"
+    class="flex flex-col items-center justify-center min-h-screen mx-auto"
+  >
     <p class="text-lg mb-4">Redirecting to payment gateway...</p>
-    <div class="w-12 h-12 border-t-4 border-blue-500 rounded-full animate-spin"></div>
+    <div class="w-12 h-12 border-t-4 border-blue-500 rounded-full animate-spin">
+    </div>
   </div>
 
   <!-- Status container to show success or error messages -->
@@ -17,7 +21,7 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
 
     // Get the publicToken from the URL query string
     const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('publicToken');
+    const token = urlParams.get("publicToken");
 
     async function processCheckout() {
       if (token) {
@@ -30,19 +34,21 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({ publicToken: token }),
-            }
+            },
           );
 
           if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
+            let error = await response.text();
+            error = error.length > 0 ? JSON.parse(error).error : null;
+            error = error ?? `Unknown error ${response.status}`;
+            throw new Error(error);
           }
 
           const result = await response.json();
           redirectUri = result.redirectUri;
 
           if (!redirectUri) {
-            throw new Error("No redirect URI provided");
+            throw new Error("No redirect URI found");
           }
 
           // Save token to localStorage
@@ -60,18 +66,14 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
           }
           const statusContainer = document.getElementById("status-container");
           if (statusContainer) {
-            statusContainer.innerHTML = `
-              <p class="text-lg text-red-500">${error}</p>
-            `;
+            statusContainer.innerHTML = `<p class="text-lg text-red-500">${error}</p>`;
           }
         }
       } else {
         error = "Missing payment token. Please try again.";
         const statusContainer = document.getElementById("status-container");
         if (statusContainer) {
-          statusContainer.innerHTML = `
-            <p class="text-lg text-red-500">${error}</p>
-          `;
+          statusContainer.innerHTML = `<p class="text-lg text-red-500">${error}</p>`;
         }
       }
     }

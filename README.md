@@ -37,7 +37,9 @@ cd BlinkPay-Snipcart-Demo
 First, you will need to have free accounts with [Netlify](https://www.netlify.com), [Snipcart](https://snipcart.com/) and [BlinkPay](https://www.blinkpay.co.nz/).
 
 ## Install Dependencies
+
 First, install the modules:
+
 ```bash
 npm install
 ```
@@ -51,16 +53,19 @@ One way to do this is to fork this demo repository into a new GitHub repository,
 Otherwise, the default set up settings should work for now. We will add environment variables later.
 
 You can now set up netlify locally:
+
 ```bash
-npx netlify init 
+npx netlify init
 ```
+
 And follow the instructions from the CLI.
 
-## BlinkPay Configuration 
+## BlinkPay Configuration
 
 You will need to set up your Redirect URL and retrieve your access key and secret from the BlinkPay Merchant Portal: https://merchants.blinkpay.co.nz/settings/api
 
 Once you are logged in:
+
 1. Navigate to your Sandbox app (under Settings/API)
 2. Add a URL to your whitelist redirect URLs for your Netlify app name, e.g. `https://YOUR-SITE-NAME.netlify.app/`and click save
 3. Copy the API key shown for your `.env` file as described below
@@ -69,6 +74,7 @@ Once you are logged in:
 ## Snipcart configuration
 
 First, set up your domain
+
 1. Head to your Snipcart dashboard and navigate to `Store Configurations`/`Domains & URLs`
 2. Enter your domain name e.g. `YOUR-SITE-NAME.netlify.app`
 3. Click `Save`
@@ -81,6 +87,7 @@ Then, you will need to set your region and currency in SnipCart:
 4. Click `Save`
 
 Now, retrieve your public cart key
+
 1. Head to your Snipcart dashboard and navigate to `Store Configurations`/`Payment Gateway`
 2. Copy your Snipcart API Key for your `.env` variables as described below
 
@@ -88,7 +95,7 @@ You will then need to configure Snipcart Custom Payment Gateway in your Snipcart
 
 1. Head to your Snipcart dashboard and navigate to `Store Configurations`/`Account`/`API Keys`
 2. Toggle `Custom Payment Gateway` to `ON` and hit `Configure`
-3. Enter your netlify function URL for payment method under `Payment Methods API URL`. In this project, this likely to be `https://YOUR-SITE-NAME.netlify.app/.netlify/functions/payment-method` 
+3. Enter your netlify function URL for payment method under `Payment Methods API URL`. In this project, this likely to be `https://YOUR-SITE-NAME.netlify.app/.netlify/functions/payment-method`
 4. Copy your Snipcart Gateway API Key for your `.env` variables as described below
 
 ## Setting up `.env`
@@ -96,10 +103,11 @@ You will then need to configure Snipcart Custom Payment Gateway in your Snipcart
 Now you are ready to create a `.env` file at the root of your project.
 
 Note that your Blinkpay Debit URL depends if you are working in a sandbox or production environment. Use:
+
 - For Non-production, use: `https://sandbox.debit.blinkpay.co.nz`
 - For production, use: `https://debit.blinkpay.co.nz`
 
-Now you are ready to create a `.env` file at the root of your project and add the following environment variables:
+Add the following environment variables:
 
 ```
 PUBLIC_BUSINESS_NAME=<your_business_name>
@@ -133,7 +141,6 @@ To develop locally, you will initially need Snipcart to crawl the web site for y
 3. Enter your live Netlify site URL e.g. `https://YOUR-SITE-NAME.netlify.app` and click `Fetch from URL`
 
 Your products should then be populated.
-
 
 ## Run and Deploy
 
