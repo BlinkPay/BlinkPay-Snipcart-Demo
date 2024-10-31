@@ -125,10 +125,8 @@ async function createQuickPayment(
   };
 
   console.log("QuickPayment request:", request);
-  const qpCreateResponse: any =
-    await blinkpayClient.createQuickPayment(request);
-  const redirectUri =
-    qpCreateResponse.redirect_uri || qpCreateResponse.redirectUri;
+  const qpCreateResponse = await blinkpayClient.createQuickPayment(request);
+  const redirectUri = qpCreateResponse.redirectUri;
   console.log("QuickPayment response:", qpCreateResponse);
 
   if (!redirectUri) {
