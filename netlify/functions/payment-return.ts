@@ -1,8 +1,20 @@
 import type { Handler } from "@netlify/functions";
 import fetch from "node-fetch";
 import { BlinkDebitClient } from "blink-debit-api-client-node";
+import axios from "axios";
 
-const client = new BlinkDebitClient();
+// Configure BlinkPay client with credentials
+const blinkPayConfig = {
+  blinkpay: {
+    debitUrl: process.env.BLINKPAY_DEBIT_URL,
+    clientId: process.env.BLINKPAY_CLIENT_ID,
+    clientSecret: process.env.BLINKPAY_CLIENT_SECRET,
+    timeout: 10000,
+    retryEnabled: true,
+  },
+};
+
+const client = new BlinkDebitClient(axios, blinkPayConfig);
 
 /**
  * Updates the payment status in Snipcart for a given payment session.

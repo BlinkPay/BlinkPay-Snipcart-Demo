@@ -9,6 +9,7 @@ import {
   type Amount,
   type Pcr,
 } from "blink-debit-api-client-node";
+import axios from "axios";
 
 /**
  * Handles the checkout process by validating the request, fetching the payment session,
@@ -104,7 +105,18 @@ async function createQuickPayment(
   code: string,
   reference: string,
 ): Promise<string> {
-  const blinkpayClient = new BlinkDebitClient();
+  // Configure BlinkPay client with credentials
+  const blinkPayConfig = {
+    blinkpay: {
+      debitUrl: process.env.BLINKPAY_DEBIT_URL,
+      clientId: process.env.BLINKPAY_CLIENT_ID,
+      clientSecret: process.env.BLINKPAY_CLIENT_SECRET,
+      timeout: 10000,
+      retryEnabled: true,
+    },
+  };
+
+  const blinkpayClient = new BlinkDebitClient(axios, blinkPayConfig);
   const request: QuickPaymentRequest = {
     type: ConsentDetailTypeEnum.Single,
     flow: {
