@@ -3,18 +3,44 @@ import fetch from "node-fetch";
 import { BlinkDebitClient } from "blink-debit-api-client-node";
 import axios from "axios";
 
-// Configure BlinkPay client with credentials
-const blinkPayConfig = {
-  blinkpay: {
-    debitUrl: process.env.BLINKPAY_DEBIT_URL,
-    clientId: process.env.BLINKPAY_CLIENT_ID,
-    clientSecret: process.env.BLINKPAY_CLIENT_SECRET,
-    timeout: 10000,
-    retryEnabled: true,
-  },
-};
+/**
+ * Initialize BlinkPay client with validation
+ */
+function initializeBlinkPayClient(): BlinkDebitClient {
+  const debitUrl = process.env.BLINKPAY_DEBIT_URL;
+  const clientId = process.env.BLINKPAY_CLIENT_ID;
+  const clientSecret = process.env.BLINKPAY_CLIENT_SECRET;
 
-const client = new BlinkDebitClient(axios, blinkPayConfig);
+  if (!debitUrl || !clientId || !clientSecret) {
+    const missing = [];
+    if (!debitUrl) missing.push("BLINKPAY_DEBIT_URL");
+    if (!clientId) missing.push("BLINKPAY_CLIENT_ID");
+    if (!clientSecret) missing.push("BLINKPAY_CLIENT_SECRET");
+    throw new Error(
+      `Missing required BlinkPay environment variables: ${missing.join(", ")}`,
+    );
+  }
+
+  console.log("Initializing BlinkPay client with:", {
+    debitUrl,
+    clientId: clientId.substring(0, 8) + "...",
+    clientSecretSet: !!clientSecret,
+  });
+
+  const blinkPayConfig = {
+    blinkpay: {
+      debitUrl,
+      clientId,
+      clientSecret,
+      timeout: 10000,
+      retryEnabled: true,
+    },
+  };
+
+  return new BlinkDebitClient(axios, blinkPayConfig);
+}
+
+const client = initializeBlinkPayClient();
 
 /**
  * Updates the payment status in Snipcart for a given payment session.
@@ -104,21 +130,30 @@ export const handler: Handler = async function (event) {
 
   try {
     // Query the BlinkPay client
+    console.log("Awaiting payment confirmation from BlinkPay...");
     const response = await client.awaitSuccessfulQuickPaymentOrThrowException(
       cid,
       300,
     );
 
+    console.log(
+      "Payment response received:",
+      JSON.stringify(response, null, 2),
+    );
+
     const reference = (response.consent as any).detail.pcr.reference;
 
     // At this point, the payment was successful
-    console.log("Payment processed successfully");
+    console.log("Payment processed successfully with reference:", reference);
     try {
       await updateSnipcart(publicToken, "processed");
-    } catch (error) {
+    } catch (error: any) {
       console.error(
         "The payment was processed but we failed to send the update to Snipcart.",
-        error,
+        {
+          message: error.message,
+          stack: error.stack,
+        },
       );
       return {
         statusCode: 400,
@@ -137,16 +172,25 @@ export const handler: Handler = async function (event) {
         reference: reference,
       }),
     };
-  } catch (error) {
-    console.error("Payment processing error:", error);
+  } catch (error: any) {
+    console.error("Payment processing error:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+    });
 
     try {
       await updateSnipcart(publicToken, "failed", {
         code: "payment_failed",
         message: "Payment processing failed",
       });
-    } catch (error) {
-      console.error("Failed to update Snipcart of a failed payment");
+    } catch (updateError: any) {
+      console.error("Failed to update Snipcart of a failed payment", {
+        message: updateError.message,
+        stack: updateError.stack,
+      });
     }
 
     return {
