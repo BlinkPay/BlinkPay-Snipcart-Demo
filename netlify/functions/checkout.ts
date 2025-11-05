@@ -9,6 +9,7 @@ import {
   type Amount,
   type Pcr,
 } from "blink-debit-api-client-node";
+import axios from "axios";
 
 /**
  * Handles the checkout process by validating the request, fetching the payment session,
@@ -104,7 +105,39 @@ async function createQuickPayment(
   code: string,
   reference: string,
 ): Promise<string> {
-  const blinkpayClient = new BlinkDebitClient();
+  // Validate required environment variables
+  const debitUrl = process.env.BLINKPAY_DEBIT_URL;
+  const clientId = process.env.BLINKPAY_CLIENT_ID;
+  const clientSecret = process.env.BLINKPAY_CLIENT_SECRET;
+
+  if (!debitUrl || !clientId || !clientSecret) {
+    const missing = [];
+    if (!debitUrl) missing.push("BLINKPAY_DEBIT_URL");
+    if (!clientId) missing.push("BLINKPAY_CLIENT_ID");
+    if (!clientSecret) missing.push("BLINKPAY_CLIENT_SECRET");
+    throw new Error(
+      `Missing required BlinkPay environment variables: ${missing.join(", ")}`,
+    );
+  }
+
+  console.log("BlinkPay configuration:", {
+    debitUrl,
+    clientId: clientId.substring(0, 8) + "...",
+    clientSecretSet: !!clientSecret,
+  });
+
+  // Configure BlinkPay client with credentials
+  const blinkPayConfig = {
+    blinkpay: {
+      debitUrl,
+      clientId,
+      clientSecret,
+      timeout: 10000,
+      retryEnabled: true,
+    },
+  };
+
+  const blinkpayClient = new BlinkDebitClient(axios, blinkPayConfig);
   const request: QuickPaymentRequest = {
     type: ConsentDetailTypeEnum.Single,
     flow: {
@@ -124,14 +157,38 @@ async function createQuickPayment(
     } as Pcr,
   };
 
-  console.log("QuickPayment request:", request);
-  const qpCreateResponse = await blinkpayClient.createQuickPayment(request);
-  const redirectUri = qpCreateResponse.redirectUri;
-  console.log("QuickPayment response:", qpCreateResponse);
+  console.log("QuickPayment request:", JSON.stringify(request, null, 2));
 
-  if (!redirectUri) {
-    throw new Error("No redirectUri in QuickPayment response");
+  try {
+    const qpCreateResponse = await blinkpayClient.createQuickPayment(request);
+    console.log(
+      "QuickPayment response:",
+      JSON.stringify(qpCreateResponse, null, 2),
+    );
+
+    const redirectUri = qpCreateResponse.redirectUri;
+
+    if (!redirectUri) {
+      console.error(
+        "QuickPayment response missing redirectUri. Full response:",
+        JSON.stringify(qpCreateResponse, null, 2),
+      );
+      throw new Error(
+        "No redirectUri in QuickPayment response. This may indicate an authentication or configuration issue with BlinkPay.",
+      );
+    }
+
+    return redirectUri;
+  } catch (error: any) {
+    console.error("BlinkPay API error:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+    });
+    throw new Error(
+      `BlinkPay API error: ${error.message || "Unknown error"}. Please check BlinkPay credentials and configuration.`,
+    );
   }
-
-  return redirectUri;
 }
