@@ -49,6 +49,16 @@ export const handler = async function (event: any) {
     const session: any = await sessionResponse.json();
     console.log("Session data:", session);
 
+    if (!session.invoice || typeof session.invoice.amount !== "number") {
+      throw new Error(
+        "Invalid session data: missing invoice or amount information",
+      );
+    }
+
+    if (!event.headers?.host) {
+      throw new Error("Invalid request: missing host header");
+    }
+
     const invoice = session.invoice;
     const returnUrl = `https://${event.headers.host}/payments/payment-return`;
     const amount = invoice.amount.toFixed(2);
@@ -122,7 +132,7 @@ async function createQuickPayment(
 
   console.log("BlinkPay configuration:", {
     debitUrl,
-    clientId: clientId.substring(0, 8) + "...",
+    clientId: clientId.length > 8 ? clientId.substring(0, 8) + "..." : "***",
     clientSecretSet: !!clientSecret,
   });
 
