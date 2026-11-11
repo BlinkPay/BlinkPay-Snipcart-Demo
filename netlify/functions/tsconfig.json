@@ -1,16 +1,15 @@
 {
   "compilerOptions": {
     "target": "es2018",
-    "module": "commonjs",
+    "module": "esnext",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "lib": ["es2018", "esnext.asynciterable"],
-    "moduleResolution": "node",
-    "sourceMap": true,
-    "outDir": "../netlify/functions",
-    "rootDir": ".",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "noEmit": true,
     "verbatimModuleSyntax": false
   },
   "include": ["./**/*.ts"],

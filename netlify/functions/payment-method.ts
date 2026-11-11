@@ -1,83 +1,67 @@
 import type { Handler } from "@netlify/functions";
 
 /**
- * Handles incoming HTTP requests from Snipcart. This will a public Snipcart token and return a list of available payment methods.
+ * Called by Snipcart to list the payment methods for a checkout.
  *
- * @param event - The event object containing the HTTP request details.
- * @returns A promise that resolves to an HTTP response object.
- *
- * The function performs the following steps:
- * 1. Logs the received request.
- * 2. Attempts to parse the request body as JSON.
- * 3. Validates the presence of the `publicToken` in the request body.
- * 4. Sends a validation request to the Snipcart API using the `publicToken`.
- * 5. If the validation is successful, constructs a list of payment methods and returns it.
- * 6. Handles and logs any errors that occur during the process.
+ * Snipcart sends its public token in the request body. The token is validated with Snipcart to
+ * prove the request came from Snipcart, and is never logged.
  *
  * Possible HTTP response statuses:
  * - 200: Successfully validated and returned the payment method list.
- * - 400: Invalid request body or missing `publicToken`.
- * - 401: Unauthorized, Snipcart validation failed.
+ * - 400: Invalid request body, missing `publicToken` or missing host header.
+ * - 401: Unauthorised, Snipcart validation failed.
  * - 500: Internal server error.
  */
 export const handler: Handler = async (event) => {
-  console.log("Received request:", JSON.stringify(event));
-
-  var request;
+  let publicToken: unknown;
   try {
-    request = JSON.parse(event.body || "{}");
-  } catch (error) {
-    console.error("Error parsing request body:", error);
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: "Invalid request body" }),
-    };
+    publicToken = JSON.parse(event.body || "{}")?.publicToken;
+  } catch {
+    // The parse error is not logged: its message quotes the body, which holds the token
+    return jsonResponse(400, { error: "Invalid request body" });
   }
 
-  if (!request.publicToken) {
-    console.log("Missing PublicToken");
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: "Missing PublicToken" }),
-    };
+  if (typeof publicToken !== "string" || !publicToken) {
+    return jsonResponse(400, { error: "Missing PublicToken" });
+  }
+
+  const hostname = event.headers.host;
+  if (!hostname) {
+    return jsonResponse(400, { error: "Missing host header" });
   }
 
   try {
     const response = await fetch(
-      `https://payment.snipcart.com/api/public/custom-payment-gateway/validate?publicToken=${request.publicToken}`,
+      `https://payment.snipcart.com/api/public/custom-payment-gateway/validate?publicToken=${encodeURIComponent(publicToken)}`,
     );
 
     if (!response.ok) {
-      console.error("Snipcart validation failed:", response.statusText);
-      return {
-        statusCode: 401,
-        body: JSON.stringify({ error: "Unauthorized" }),
-      };
+      console.warn(
+        `Snipcart token validation failed with HTTP ${response.status}`,
+      );
+      return jsonResponse(401, { error: "Unauthorized" });
     }
 
-    const hostname = event.headers.host;
-
-    const paymentMethodList = [
-      {
-        id: "blinkpay",
-        name: "BlinkPay",
-        checkoutUrl: `https://${hostname}/payments/checkout`,
-      },
-    ];
-
-    console.log("Sending response:", JSON.stringify(paymentMethodList));
     return {
       statusCode: 200,
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(paymentMethodList),
+      body: JSON.stringify([
+        {
+          id: "blinkpay",
+          name: "BlinkPay",
+          checkoutUrl: `https://${hostname}/payments/checkout`,
+        },
+      ]),
     };
-  } catch (error) {
-    console.error("Error processing request:", error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: "Internal Server Error" }),
-    };
+  } catch {
+    // The error is not logged: it comes from a request whose URL holds the token
+    console.error("Snipcart token validation could not be completed");
+    return jsonResponse(500, { error: "Internal Server Error" });
   }
 };
+
+function jsonResponse(statusCode: number, body: object) {
+  return { statusCode, body: JSON.stringify(body) };
+}

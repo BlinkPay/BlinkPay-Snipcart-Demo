@@ -1,3 +1,4 @@
+import type { Handler } from "@netlify/functions";
 import {
   BlinkDebitClient,
   type QuickPaymentRequest,
@@ -11,111 +12,158 @@ import {
 } from "blink-debit-api-client-node";
 import axios from "axios";
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The part of Snipcart's payment session this function relies on. */
+interface SnipcartPaymentSession {
+  id: string;
+  invoice: { amount: number; currency: string };
+}
+
 /**
- * Handles the checkout process by validating the request, fetching the payment session,
- * and creating a quick payment. Returns a redirect URI for the payment.
+ * Starts a BlinkPay quick payment for a Snipcart payment session and returns the URL to send
+ * the customer to.
  *
- * @param {any} event - The event object containing the request data.
- * @returns {Promise<{statusCode: number, body: string}>} - The response object containing the status code and body.
+ * The amount is always read from Snipcart on the server, never taken from the browser. The
+ * quick payment is bound to the Snipcart session in three ways: the session ID travels on
+ * BlinkPay's redirect URI, its first 12 characters are stamped into the PCR reference, and it
+ * is both the request ID and the idempotency key, so a repeated request for one session can't
+ * create a second payment (BlinkPay de-duplicates gateway flow requests on the request ID).
  *
- * @throws {Error} - Throws an error if the SNIPCART_GATEWAY_API_KEY is not set, the request is invalid,
- *                   fetching the payment session fails, or creating the quick payment fails.
+ * Nothing from the request, the Snipcart session or the customer is logged.
  */
-export const handler = async function (event: any) {
-  console.log("Received request:", JSON.stringify(event));
+export const handler: Handler = async (event) => {
+  const publicToken = readPublicToken(event.body);
+  if (!publicToken) {
+    return jsonResponse(400, { error: "Missing publicToken" });
+  }
+
+  const host = event.headers.host;
+  if (!host) {
+    return jsonResponse(400, { error: "Missing host header" });
+  }
 
   try {
-    if (!process.env.SNIPCART_GATEWAY_API_KEY) {
-      throw new Error("SNIPCART_GATEWAY_API_KEY is not set");
-    }
-
-    const request = event.body ? JSON.parse(event.body) : null;
-    if (!request || !request.publicToken) {
-      throw new Error("Invalid request or missing publicToken");
-    }
-
-    // Get the payment session
-    const sessionResponse = await fetch(
-      `https://payment.snipcart.com/api/public/custom-payment-gateway/payment-session?publicToken=${request.publicToken}`,
-      { method: "GET" },
-    );
-
-    if (!sessionResponse.ok) {
-      throw new Error(
-        `Failed to fetch payment session: ${sessionResponse.status}`,
-      );
-    }
-
-    const session: any = await sessionResponse.json();
-    console.log("Session data:", session);
-
-    if (!session.invoice || typeof session.invoice.amount !== "number") {
-      throw new Error(
-        "Invalid session data: missing invoice or amount information",
-      );
-    }
-
-    if (!event.headers?.host) {
-      throw new Error("Invalid request: missing host header");
-    }
-
-    const invoice = session.invoice;
-    const returnUrl = `https://${event.headers.host}/payments/payment-return`;
-    const amount = invoice.amount.toFixed(2);
-    const particulars = (process.env.PUBLIC_BUSINESS_NAME ?? "").slice(0, 12); // Will be displayed on the bank statement, limit 12 chars
-    const code = "BlinkPay"; // Will be displayed on the bank statement, limit 12 chars
-    const randomOrderNo = Math.floor(Math.random() * 900000) + 100000;
-    const reference = `PAY-${randomOrderNo}`; // Will be displayed on the bank statement, limit 12 chars
-
-    console.log("Creating quick payment with:", {
-      returnUrl,
-      amount,
-      particulars,
-      code,
-      reference,
-    });
+    const session = await fetchPaymentSession(publicToken);
     const redirectUri = await createQuickPayment(
-      returnUrl,
-      amount,
-      particulars,
-      code,
-      reference,
+      session,
+      `https://${host}/payments/payment-return?session=${session.id}`,
     );
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ redirectUri: redirectUri }),
-    };
-  } catch (error: any) {
-    console.error("Error in handler:", error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({
-        error: error.message || "An unknown error occurred",
-      }),
-    };
+    return jsonResponse(200, { redirectUri });
+  } catch (error: unknown) {
+    // Only the message: error objects from HTTP clients can carry request URLs and headers.
+    console.error(
+      "Checkout failed:",
+      error instanceof Error ? error.message : "unknown error",
+    );
+    return jsonResponse(500, {
+      error: "Unable to start the payment. Please try again.",
+    });
   }
 };
 
+function jsonResponse(statusCode: number, body: object) {
+  return { statusCode, body: JSON.stringify(body) };
+}
+
+function readPublicToken(body: string | null): string | null {
+  try {
+    const publicToken = JSON.parse(body ?? "{}")?.publicToken;
+    return typeof publicToken === "string" && publicToken ? publicToken : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Creates a quick payment request with BlinkPay and returns the redirect URI.
- *
- * @param returnUrl - The URL to which the user will be redirected after payment.
- * @param amount - The total amount for the payment in string format.
- * @param particulars - The payment particulars.
- * @param code - The payment code.
- * @param reference - The payment reference.
- * @returns A promise that resolves to the redirect URI for the quick payment.
- * @throws Will throw an error if the quick payment request fails or if no redirect URI is found in the response.
+ * Reads the payment session from Snipcart. This is the only use of the public token.
+ */
+async function fetchPaymentSession(
+  publicToken: string,
+): Promise<SnipcartPaymentSession> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://payment.snipcart.com/api/public/custom-payment-gateway/payment-session?publicToken=${encodeURIComponent(publicToken)}`,
+    );
+  } catch {
+    // The original error is dropped: it comes from a request whose URL holds the token
+    throw new Error("Snipcart payment session request could not be completed");
+  }
+  if (!response.ok) {
+    throw new Error(
+      `Snipcart payment session request failed with HTTP ${response.status}`,
+    );
+  }
+
+  const session = (await response.json()) as Partial<SnipcartPaymentSession>;
+  if (typeof session.id !== "string" || !UUID_PATTERN.test(session.id)) {
+    throw new Error("Snipcart payment session has no valid ID");
+  }
+  if (typeof session.invoice?.amount !== "number") {
+    throw new Error("Snipcart payment session has no invoice amount");
+  }
+  // BlinkPay takes NZD only, so an amount in any other currency must not be charged as NZD
+  const currency = session.invoice.currency;
+  if (typeof currency !== "string" || currency.toUpperCase() !== "NZD") {
+    throw new Error("Snipcart payment session is not in NZD");
+  }
+  return {
+    id: session.id,
+    invoice: { amount: session.invoice.amount, currency },
+  };
+}
+
+/**
+ * Creates the BlinkPay quick payment and returns the gateway URL for the customer.
  */
 async function createQuickPayment(
+  session: SnipcartPaymentSession,
   returnUrl: string,
-  amount: string,
-  particulars: string,
-  code: string,
-  reference: string,
 ): Promise<string> {
-  // Validate required environment variables
+  const request: QuickPaymentRequest = {
+    type: ConsentDetailTypeEnum.Single,
+    flow: {
+      detail: {
+        type: AuthFlowDetailTypeEnum.Gateway,
+        redirectUri: returnUrl,
+      } as GatewayFlow,
+    } as AuthFlow,
+    amount: {
+      currency: AmountCurrencyEnum.NZD,
+      total: session.invoice.amount.toFixed(2),
+    } as Amount,
+    // PCR fields appear on the bank statement and are limited to 12 characters each
+    pcr: {
+      particulars: (process.env.PUBLIC_BUSINESS_NAME || "Online order").slice(
+        0,
+        12,
+      ),
+      code: "BlinkPay",
+      // Checked on return to prove the quick payment belongs to this Snipcart session
+      reference: session.id.slice(0, 12),
+    } as Pcr,
+  };
+
+  try {
+    const response = await getBlinkPayClient().createQuickPayment(request, {
+      requestId: session.id,
+      idempotencyKey: session.id,
+    });
+    if (!response.redirectUri) {
+      throw new Error("the response has no redirectUri");
+    }
+    console.log(`Created quick payment ${response.quickPaymentId}`);
+    return response.redirectUri;
+  } catch (error: any) {
+    throw new Error(
+      `BlinkPay quick payment creation failed: ${error.message}. Check the BlinkPay credentials and whitelisted redirect URL.`,
+    );
+  }
+}
+
+function getBlinkPayClient(): BlinkDebitClient {
   const debitUrl = process.env.BLINKPAY_DEBIT_URL;
   const clientId = process.env.BLINKPAY_CLIENT_ID;
   const clientSecret = process.env.BLINKPAY_CLIENT_SECRET;
@@ -130,14 +178,7 @@ async function createQuickPayment(
     );
   }
 
-  console.log("BlinkPay configuration:", {
-    debitUrl,
-    clientId: clientId.length > 8 ? clientId.substring(0, 8) + "..." : "***",
-    clientSecretSet: !!clientSecret,
-  });
-
-  // Configure BlinkPay client with credentials
-  const blinkPayConfig = {
+  return new BlinkDebitClient(axios, {
     blinkpay: {
       debitUrl,
       clientId,
@@ -145,60 +186,5 @@ async function createQuickPayment(
       timeout: 10000,
       retryEnabled: true,
     },
-  };
-
-  const blinkpayClient = new BlinkDebitClient(axios, blinkPayConfig);
-  const request: QuickPaymentRequest = {
-    type: ConsentDetailTypeEnum.Single,
-    flow: {
-      detail: {
-        type: AuthFlowDetailTypeEnum.Gateway,
-        redirectUri: returnUrl,
-      } as GatewayFlow,
-    } as AuthFlow,
-    amount: {
-      currency: AmountCurrencyEnum.NZD,
-      total: amount,
-    } as Amount,
-    pcr: {
-      particulars: particulars,
-      code: code,
-      reference: reference,
-    } as Pcr,
-  };
-
-  console.log("QuickPayment request:", JSON.stringify(request, null, 2));
-
-  try {
-    const qpCreateResponse = await blinkpayClient.createQuickPayment(request);
-    console.log(
-      "QuickPayment response:",
-      JSON.stringify(qpCreateResponse, null, 2),
-    );
-
-    const redirectUri = qpCreateResponse.redirectUri;
-
-    if (!redirectUri) {
-      console.error(
-        "QuickPayment response missing redirectUri. Full response:",
-        JSON.stringify(qpCreateResponse, null, 2),
-      );
-      throw new Error(
-        "No redirectUri in QuickPayment response. This may indicate an authentication or configuration issue with BlinkPay.",
-      );
-    }
-
-    return redirectUri;
-  } catch (error: any) {
-    console.error("BlinkPay API error:", {
-      message: error.message,
-      stack: error.stack,
-      response: error.response?.data,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-    });
-    throw new Error(
-      `BlinkPay API error: ${error.message || "Unknown error"}. Please check BlinkPay credentials and configuration.`,
-    );
-  }
+  });
 }

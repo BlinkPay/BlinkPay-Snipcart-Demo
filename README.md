@@ -18,7 +18,7 @@ See the live site: [BlinkPay Snipcart Demo](https://blinkpay-snipcart-demo.netli
 
 Ensure you have the following tools installed:
 
-- [Node.js](https://nodejs.org/en/)
+- [Node.js](https://nodejs.org/en/) 22.23.4 or later
 - [Netlify CLI](https://docs.netlify.com/cli/get-started/) (for local development and deployment)
 - [Snipcart Account](https://snipcart.com/) (to manage your e-commerce)
 - [BlinkPay Account](https://blinkpay.co.nz/) (to process payments)
@@ -67,7 +67,7 @@ You will need to set up your Redirect URL and retrieve your access key and secre
 Once you are logged in:
 
 1. Navigate to your Sandbox app (under Settings/API)
-2. Add a URL to your whitelist redirect URLs for your Netlify app name, e.g. `https://YOUR-SITE-NAME.netlify.app/`and click save
+2. Add your return page to your whitelisted redirect URLs, e.g. `https://YOUR-SITE-NAME.netlify.app/payments/payment-return`, and click save. The demo adds a `?session=` query string to this URL; BlinkPay ignores query strings when it checks the whitelist
 3. Copy the API key shown for your `.env` file as described below
 4. Click `Rotate Secret` - your new API secret will display. Copy this for your `.env` file too
 
@@ -152,6 +152,14 @@ To run the application locally, including netlify functions:
 npm run netlify-dev
 ```
 
+### Running the Tests
+
+The Netlify Functions have unit tests in `tests/`, run with [Vitest](https://vitest.dev/). BlinkPay and Snipcart are mocked, so no credentials are needed:
+
+```bash
+npm test
+```
+
 ### Deployment
 
 To build and deploy the project to your Netlify development environment:
@@ -165,6 +173,30 @@ To build and deploy the project to your Netlify production environment:
 ```bash
 npm run netlify-deploy-prod
 ```
+
+## How the Payment Flow Works
+
+1. **Payment methods** (`netlify/functions/payment-method.ts`): Snipcart POSTs its `publicToken` to this function. The function validates the token with Snipcart and returns BlinkPay as a payment method.
+2. **Checkout** (`src/pages/payments/checkout.astro`, `netlify/functions/checkout.ts`): Snipcart sends the customer to the checkout page with `publicToken` in the query string. The page removes the token from the address bar, and the function uses it once to read the payment session (ID and amount) from Snipcart. It then creates a BlinkPay quick payment with:
+   - the Snipcart session ID on the redirect URI (`/payments/payment-return?session=<id>`),
+   - the first 12 characters of the session ID as the PCR reference, and
+   - the session ID as the request ID and idempotency key, so one session can't create two payments (BlinkPay de-duplicates gateway flow requests on the request ID).
+
+   The function refuses a Snipcart session that isn't in NZD.
+
+3. **Return** (`src/pages/payments/payment-return.astro`, `netlify/functions/payment-return.ts`): BlinkPay returns the customer with the session ID and its own `cid` (the quick payment ID). The page polls the function every second for up to two minutes. Each call reads the quick payment once, refuses it unless its PCR reference matches the session, and, once the outcome is final, confirms it with Snipcart's private API using the session ID, the gateway secret key and the quick payment ID as `transactionId`. The customer is then sent to the `returnUrl` Snipcart supplies.
+
+### Security Notes
+
+If you build on this demo, keep these properties:
+
+- **The `publicToken` is a credential for the payment session.** It is used once, on the server, and is never stored in the browser, put in a URL the demo builds, or sent to BlinkPay.
+- **Nothing sensitive is logged.** The functions never log request bodies, query strings, tokens, or the Snipcart session, which holds the customer's email and addresses. They log quick payment IDs and outcomes only.
+- **The quick payment is bound to the session.** Without the PCR reference check, a paid quick payment from one session could be used to confirm another.
+- **Only `AcceptedSettlementCompleted` is treated as paid**, and the outcome always comes from a server-side read of the quick payment, never from the return URL.
+- **A slow customer is never penalised.** The demo never revokes a quick payment; a customer still at their bank is simply pending.
+
+This is a starting point, not a finished integration. It keeps no state of its own, so it can't re-check the invoice amount on return or follow up a payment that settles after the customer has left the return page. A production integration should store the quick payment ID against the order and reconcile unfinished payments in the background.
 
 ## Contributions
 

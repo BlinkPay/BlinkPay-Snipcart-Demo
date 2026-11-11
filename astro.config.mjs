@@ -1,9 +1,6 @@
-import { defineConfig } from 'astro/config';
-import tailwind from "@astrojs/tailwind";
-import netlify from '@astrojs/netlify';
+import { defineConfig } from "astro/config";
 
+// Tailwind runs through PostCSS (postcss.config.js)
 export default defineConfig({
-  output: 'static',
-  adapter: netlify(),
-  integrations: [tailwind()]
+  output: "static",
 });

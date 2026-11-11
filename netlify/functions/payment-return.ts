@@ -1,16 +1,20 @@
 import type { Handler } from "@netlify/functions";
-import fetch from "node-fetch";
-import { BlinkDebitClient } from "blink-debit-api-client-node";
+import {
+  BlinkDebitClient,
+  ConsentStatusEnum,
+  PaymentStatusEnum,
+  type QuickPaymentResponse,
+  type SingleConsentRequest,
+} from "blink-debit-api-client-node";
 import axios from "axios";
 
-/**
- * Lazy-initialized BlinkPay client cache
- */
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type Outcome = "paid" | "failed" | "pending";
+
 let clientInstance: BlinkDebitClient | null = null;
 
-/**
- * Initialize BlinkPay client with validation (lazy initialization)
- */
 function getBlinkPayClient(): BlinkDebitClient {
   if (clientInstance) {
     return clientInstance;
@@ -30,13 +34,7 @@ function getBlinkPayClient(): BlinkDebitClient {
     );
   }
 
-  console.log("Initializing BlinkPay client with:", {
-    debitUrl,
-    clientId: clientId.length > 8 ? clientId.substring(0, 8) + "..." : "***",
-    clientSecretSet: !!clientSecret,
-  });
-
-  const blinkPayConfig = {
+  clientInstance = new BlinkDebitClient(axios, {
     blinkpay: {
       debitUrl,
       clientId,
@@ -44,45 +42,47 @@ function getBlinkPayClient(): BlinkDebitClient {
       timeout: 10000,
       retryEnabled: true,
     },
-  };
-
-  clientInstance = new BlinkDebitClient(axios, blinkPayConfig);
+  });
   return clientInstance;
 }
 
 /**
- * Updates the payment status in Snipcart for a given payment session.
+ * Works out where a quick payment has got to.
  *
- * @param publicToken - The public token associated with the payment session.
- * @param state - The state of the payment, either "processed" or "failed".
- * @param error - Optional error object containing a code and message, used when the payment state is "failed".
- * @returns A promise that resolves to the response from Snipcart's API.
- * @throws Will throw an error if fetching the payment session or updating the payment status fails.
+ * Only AcceptedSettlementCompleted means the customer has paid. A consent that is still
+ * awaiting authorisation is pending, however long the customer takes: this function never
+ * revokes a quick payment.
  */
-async function updateSnipcart(
-  publicToken: string,
-  state: "processed" | "failed",
-  error?: { code: string; message: string },
-) {
+function resolveOutcome(quickPayment: QuickPaymentResponse): Outcome {
+  const consentStatus = quickPayment.consent.status;
+  const paymentStatus = quickPayment.consent.payments?.[0]?.status;
+
+  if (paymentStatus === PaymentStatusEnum.AcceptedSettlementCompleted) {
+    return "paid";
+  }
+  if (
+    paymentStatus === PaymentStatusEnum.Rejected ||
+    consentStatus === ConsentStatusEnum.Rejected ||
+    consentStatus === ConsentStatusEnum.Revoked ||
+    consentStatus === ConsentStatusEnum.GatewayTimeout
+  ) {
+    return "failed";
+  }
+  return "pending";
+}
+
+/**
+ * Confirms the outcome with Snipcart, using the payment session ID and the gateway secret key.
+ *
+ * @returns the URL Snipcart wants the customer sent to
+ */
+async function confirmWithSnipcart(
+  sessionId: string,
+  quickPaymentId: string,
+  outcome: "paid" | "failed",
+): Promise<string> {
   if (!process.env.SNIPCART_GATEWAY_API_KEY) {
     throw new Error("SNIPCART_GATEWAY_API_KEY environment variable is not set");
-  }
-
-  const sessionResponse = await fetch(
-    `https://payment.snipcart.com/api/public/custom-payment-gateway/payment-session?publicToken=${publicToken}`,
-    { method: "GET" },
-  );
-
-  if (!sessionResponse.ok) {
-    throw new Error(
-      `Failed to fetch payment session: ${sessionResponse.statusText}`,
-    );
-  }
-
-  const session: any = await sessionResponse.json();
-
-  if (!session.id) {
-    throw new Error("Invalid session data: missing session ID");
   }
 
   const response = await fetch(
@@ -94,134 +94,112 @@ async function updateSnipcart(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        paymentSessionId: session.id,
-        state,
-        ...(error && { error }),
+        paymentSessionId: sessionId,
+        state: outcome === "paid" ? "processed" : "failed",
+        transactionId: quickPaymentId,
+        ...(outcome === "failed" && {
+          error: {
+            code: "payment_failed",
+            message:
+              "The payment was not completed. It was declined, cancelled or timed out at the bank.",
+          },
+        }),
       }),
     },
   );
 
   if (!response.ok) {
     throw new Error(
-      `Failed to update Snipcart payment status: ${response.statusText}`,
-    );
-  } else {
-    console.log(
-      `Snipcart payment status updated successfully for a ${state} payment`,
+      `Snipcart payment confirmation failed with HTTP ${response.status}`,
     );
   }
-  return await response.json();
+
+  const { returnUrl } = (await response.json()) as { returnUrl?: string };
+  if (!returnUrl || !returnUrl.startsWith("https://")) {
+    throw new Error(
+      "Snipcart payment confirmation returned no usable returnUrl",
+    );
+  }
+  return returnUrl;
+}
+
+function jsonResponse(statusCode: number, body: object) {
+  return { statusCode, body: JSON.stringify(body) };
 }
 
 /**
- * Handles the payment return process by verifying required query parameters,
- * querying the BlinkPay client for payment status, and updating Snipcart accordingly.
+ * Called by the return page, repeatedly, once BlinkPay has sent the customer back.
  *
- * @param {object} event - The event object containing query parameters.
- * @param {object} event.queryStringParameters - The query parameters from the request.
- * @param {string} event.queryStringParameters.publicToken - The public token for Snipcart.
- * @param {string} event.queryStringParameters.cid - The quick payment ID.
+ * Each call reads the quick payment once (which is also what completes it at BlinkPay), checks
+ * it was created for the supplied Snipcart session, and confirms the result with Snipcart once
+ * it is final. The return page polls until then, so this function stays well inside Netlify's
+ * function timeout.
  *
- * @returns {Promise<object>} - The response object with status code and body.
- *
- * @throws {Error} - Throws an error if payment processing or Snipcart update fails.
+ * Responses:
+ * - 200 `{ status: "pending" }`: not final yet, ask again
+ * - 200 `{ status: "paid" | "failed", returnUrl }`: final and confirmed with Snipcart
+ * - 400: `session` or `cid` is missing or malformed
+ * - 403: the quick payment was not created for this session
+ * - 502: BlinkPay or Snipcart could not be reached, ask again
  */
-export const handler: Handler = async function (event) {
-  console.log("Received request:", JSON.stringify(event));
+export const handler: Handler = async (event) => {
+  const sessionId = event.queryStringParameters?.session ?? "";
+  const quickPaymentId = event.queryStringParameters?.cid ?? "";
 
-  if (
-    !event.queryStringParameters ||
-    !event.queryStringParameters.publicToken ||
-    !event.queryStringParameters.cid
-  ) {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: "Missing required parameters" }),
-    };
+  if (!UUID_PATTERN.test(sessionId) || !UUID_PATTERN.test(quickPaymentId)) {
+    return jsonResponse(400, { error: "Missing or invalid parameters" });
   }
 
-  const { publicToken, cid } = event.queryStringParameters;
+  let quickPayment: QuickPaymentResponse;
+  try {
+    quickPayment = await getBlinkPayClient().getQuickPayment(quickPaymentId);
+  } catch (error: any) {
+    console.error(
+      `Reading quick payment ${quickPaymentId} failed: ${error.message}`,
+    );
+    return jsonResponse(502, {
+      error: "We couldn't check your payment. Please try again.",
+    });
+  }
 
-  console.log("Querying payment response for quick payment ID:", cid);
+  // The reference was stamped from the session ID at checkout. Without this check, a paid
+  // quick payment from one Snipcart session could be used to confirm another.
+  const reference = (quickPayment.consent.detail as SingleConsentRequest).pcr
+    ?.reference;
+  if (reference !== sessionId.slice(0, 12)) {
+    console.warn(
+      `Refused quick payment ${quickPaymentId}: it was not created for the supplied Snipcart session`,
+    );
+    return jsonResponse(403, {
+      error: "This payment does not belong to this order.",
+    });
+  }
+
+  const outcome = resolveOutcome(quickPayment);
+  if (outcome === "pending") {
+    return jsonResponse(200, { status: outcome });
+  }
 
   try {
-    // Query the BlinkPay client
-    console.log("Awaiting payment confirmation from BlinkPay...");
-    const client = getBlinkPayClient();
-    const response = await client.awaitSuccessfulQuickPaymentOrThrowException(
-      cid,
-      300,
+    const returnUrl = await confirmWithSnipcart(
+      sessionId,
+      quickPaymentId,
+      outcome,
     );
-
     console.log(
-      "Payment response received:",
-      JSON.stringify(response, null, 2),
+      `Quick payment ${quickPaymentId} confirmed with Snipcart as ${outcome}`,
     );
-
-    // Safely extract reference with null checks
-    const consent = response?.consent as any;
-    const reference = consent?.detail?.pcr?.reference;
-
-    if (!reference) {
-      throw new Error("Payment response missing reference information");
-    }
-
-    // At this point, the payment was successful
-    console.log("Payment processed successfully with reference:", reference);
-    try {
-      await updateSnipcart(publicToken, "processed");
-    } catch (error: any) {
-      console.error(
-        "The payment was processed but we failed to send the update to Snipcart.",
-        {
-          message: error.message,
-          stack: error.stack,
-        },
-      );
-      return {
-        statusCode: 400,
-        body: JSON.stringify({
-          status: "error",
-          message: `The payment was processed but we failed to send the update to our system. Please contact our staff with the payment reference ${reference} to complete your order.`,
-        }),
-      };
-    }
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
-        status: "success",
-        message: "Payment processed successfully",
-        reference: reference,
-      }),
-    };
-  } catch (error: any) {
-    console.error("Payment processing error:", {
-      message: error.message,
-      stack: error.stack,
-      response: error.response?.data,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
+    return jsonResponse(200, { status: outcome, returnUrl });
+  } catch (error: unknown) {
+    console.error(
+      `Quick payment ${quickPaymentId} is ${outcome} but confirming it with Snipcart failed:`,
+      error instanceof Error ? error.message : "unknown error",
+    );
+    return jsonResponse(502, {
+      error:
+        outcome === "paid"
+          ? `Your payment was received but we couldn't update your order. Please contact us with the payment reference ${reference}.`
+          : "We couldn't update your order. Please try again.",
     });
-
-    try {
-      await updateSnipcart(publicToken, "failed", {
-        code: "payment_failed",
-        message: "Payment processing failed",
-      });
-    } catch (updateError: any) {
-      console.error("Failed to update Snipcart of a failed payment", {
-        message: updateError.message,
-        stack: updateError.stack,
-      });
-    }
-
-    return {
-      statusCode: 400,
-      body: JSON.stringify({
-        status: "error",
-        error: "Payment processing failed",
-      }),
-    };
   }
 };
