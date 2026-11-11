@@ -27,9 +27,10 @@ interface SnipcartPaymentSession {
  *
  * The amount is always read from Snipcart on the server, never taken from the browser. The
  * quick payment is bound to the Snipcart session in three ways: the session ID travels on
- * BlinkPay's redirect URI, its first 12 characters are stamped into the PCR reference, and it
- * is both the request ID and the idempotency key, so a repeated request for one session can't
- * create a second payment (BlinkPay de-duplicates gateway flow requests on the request ID).
+ * BlinkPay's redirect URI, its first 12 characters are stamped into the PCR reference (both
+ * are checked on return), and it is both the request ID and the idempotency key, so a
+ * repeated request for one session can't create a second payment (BlinkPay de-duplicates
+ * gateway flow requests on the request ID).
  *
  * Nothing from the request, the Snipcart session or the customer is logged.
  */
@@ -97,7 +98,13 @@ async function fetchPaymentSession(
     );
   }
 
-  const session = (await response.json()) as Partial<SnipcartPaymentSession>;
+  let session: Partial<SnipcartPaymentSession>;
+  try {
+    session = (await response.json()) as Partial<SnipcartPaymentSession>;
+  } catch {
+    // The parse error is dropped: its message quotes the body, which holds customer details
+    throw new Error("Snipcart payment session response is not valid JSON");
+  }
   if (typeof session.id !== "string" || !UUID_PATTERN.test(session.id)) {
     throw new Error("Snipcart payment session has no valid ID");
   }

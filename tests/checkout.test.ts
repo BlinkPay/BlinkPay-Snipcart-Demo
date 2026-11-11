@@ -141,6 +141,18 @@ describe("checkout function", () => {
     expect(logs()).not.toContain(PUBLIC_TOKEN);
   });
 
+  it("answers 500 without logging the body when the Snipcart session is not valid JSON", async () => {
+    // A parse error quotes the text around the fault, so customer details are put right there
+    fetchMock.mockResolvedValue(new Response(CUSTOMER_EMAIL));
+
+    const response = await invoke(handler, request);
+
+    expect(response.statusCode).toBe(500);
+    expect(blinkpay.createQuickPayment).not.toHaveBeenCalled();
+    expect(logs()).toContain("is not valid JSON");
+    expect(logs()).not.toContain(CUSTOMER_EMAIL.slice(0, 4));
+  });
+
   it.each([
     ["no ID", { id: undefined }],
     ["an ID that is not a UUID", { id: "not-a-uuid" }],

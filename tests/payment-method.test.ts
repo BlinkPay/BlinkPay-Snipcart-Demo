@@ -52,13 +52,12 @@ describe("payment-method function", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("answers 400 without logging the body when the body is not valid JSON", async () => {
-    const response = await invoke(handler, {
-      body: `{"publicToken":"${PUBLIC_TOKEN}"`,
-    });
+  it("answers 400 without logging anything when the body is not valid JSON", async () => {
+    // A parse error quotes the text around the fault, so the token is put right there
+    const response = await invoke(handler, { body: PUBLIC_TOKEN });
 
     expect(response.statusCode).toBe(400);
-    expect(logs()).not.toContain(PUBLIC_TOKEN);
+    expect(logs()).toBe("[]");
   });
 
   it("answers 500 without logging the token when Snipcart can't be reached", async () => {

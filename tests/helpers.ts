@@ -7,6 +7,7 @@ export const CUSTOMER_ADDRESS = "1 Queen Street";
 export const SESSION_ID = "5e921d3b-8756-4fd0-87e9-c72f946535ed";
 export const OTHER_SESSION_ID = "11111111-2222-4333-8444-555555555555";
 export const QUICK_PAYMENT_ID = "3a3b7f7d-f8e6-4c3e-b2a1-5f9c8d7e6a5b";
+export const PAYMENT_ID = "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f";
 export const GATEWAY_API_KEY = "snipcart-gateway-secret";
 export const RETURN_URL = "https://shop.example/#/order/1";
 

@@ -2,6 +2,7 @@ import type { Handler } from "@netlify/functions";
 import {
   BlinkDebitClient,
   ConsentStatusEnum,
+  type GatewayFlow,
   PaymentStatusEnum,
   type QuickPaymentResponse,
   type SingleConsentRequest,
@@ -72,13 +73,40 @@ function resolveOutcome(quickPayment: QuickPaymentResponse): Outcome {
 }
 
 /**
+ * Checks the quick payment was created for the Snipcart session, using both marks checkout
+ * left on it: the full session ID on the stored redirect URI, and its first 12 characters in
+ * the PCR reference. Without this, a paid quick payment from one Snipcart session could be
+ * used to confirm another.
+ */
+function isBoundToSession(
+  quickPayment: QuickPaymentResponse,
+  sessionId: string,
+): boolean {
+  const detail = quickPayment.consent.detail as SingleConsentRequest;
+  const redirectUri = (detail.flow?.detail as GatewayFlow | undefined)
+    ?.redirectUri;
+
+  let redirectSessionId: string | null;
+  try {
+    redirectSessionId = new URL(redirectUri ?? "").searchParams.get("session");
+  } catch {
+    return false;
+  }
+  return (
+    redirectSessionId === sessionId &&
+    detail.pcr?.reference === sessionId.slice(0, 12)
+  );
+}
+
+/**
  * Confirms the outcome with Snipcart, using the payment session ID and the gateway secret key.
  *
+ * @param transactionId the BlinkPay payment ID, or the quick payment ID when no payment exists
  * @returns the URL Snipcart wants the customer sent to
  */
 async function confirmWithSnipcart(
   sessionId: string,
-  quickPaymentId: string,
+  transactionId: string,
   outcome: "paid" | "failed",
 ): Promise<string> {
   if (!process.env.SNIPCART_GATEWAY_API_KEY) {
@@ -96,7 +124,7 @@ async function confirmWithSnipcart(
       body: JSON.stringify({
         paymentSessionId: sessionId,
         state: outcome === "paid" ? "processed" : "failed",
-        transactionId: quickPaymentId,
+        transactionId,
         ...(outcome === "failed" && {
           error: {
             code: "payment_failed",
@@ -132,7 +160,7 @@ function jsonResponse(statusCode: number, body: object) {
  *
  * Each call reads the quick payment once (which is also what completes it at BlinkPay), checks
  * it was created for the supplied Snipcart session, and confirms the result with Snipcart once
- * it is final. The return page polls until then, so this function stays well inside Netlify's
+ * it is final, quoting the BlinkPay payment ID as the transaction ID. The return page polls until then, so this function stays well inside Netlify's
  * function timeout.
  *
  * Responses:
@@ -162,11 +190,7 @@ export const handler: Handler = async (event) => {
     });
   }
 
-  // The reference was stamped from the session ID at checkout. Without this check, a paid
-  // quick payment from one Snipcart session could be used to confirm another.
-  const reference = (quickPayment.consent.detail as SingleConsentRequest).pcr
-    ?.reference;
-  if (reference !== sessionId.slice(0, 12)) {
+  if (!isBoundToSession(quickPayment, sessionId)) {
     console.warn(
       `Refused quick payment ${quickPaymentId}: it was not created for the supplied Snipcart session`,
     );
@@ -183,7 +207,7 @@ export const handler: Handler = async (event) => {
   try {
     const returnUrl = await confirmWithSnipcart(
       sessionId,
-      quickPaymentId,
+      quickPayment.consent.payments?.[0]?.paymentId ?? quickPaymentId,
       outcome,
     );
     console.log(
@@ -198,7 +222,7 @@ export const handler: Handler = async (event) => {
     return jsonResponse(502, {
       error:
         outcome === "paid"
-          ? `Your payment was received but we couldn't update your order. Please contact us with the payment reference ${reference}.`
+          ? `Your payment was received but we couldn't update your order. Please contact us with the payment reference ${sessionId.slice(0, 12)}.`
           : "We couldn't update your order. Please try again.",
     });
   }
