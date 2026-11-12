@@ -149,7 +149,9 @@ describe("checkout function", () => {
 
     expect(response.statusCode).toBe(500);
     expect(blinkpay.createQuickPayment).not.toHaveBeenCalled();
-    expect(logs()).toContain("is not valid JSON");
+    expect(logs()).toContain(
+      "Snipcart payment session response is not valid JSON",
+    );
     expect(logs()).not.toContain(CUSTOMER_EMAIL.slice(0, 4));
   });
 
@@ -168,6 +170,16 @@ describe("checkout function", () => {
     const response = await invoke(handler, request);
 
     expect(response.statusCode).toBe(500);
+    expect(blinkpay.createQuickPayment).not.toHaveBeenCalled();
+  });
+
+  it("refuses a Snipcart session that is JSON null", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(null));
+
+    const response = await invoke(handler, request);
+
+    expect(response.statusCode).toBe(500);
+    expect(logs()).toContain("Snipcart payment session has no valid ID");
     expect(blinkpay.createQuickPayment).not.toHaveBeenCalled();
   });
 

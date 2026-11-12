@@ -230,6 +230,8 @@ describe("payment-return function", () => {
 
     it.each([
       ["no returnUrl", {}],
+      ["JSON null", null],
+      ["a returnUrl that is not a string", { returnUrl: 42 }],
       ["a returnUrl that is not HTTPS", { returnUrl: "javascript:alert(1)" }],
     ])("answers 502 when Snipcart returns %s", async (_case, body) => {
       fetchMock.mockResolvedValue(jsonResponse(body));
@@ -237,7 +239,23 @@ describe("payment-return function", () => {
       const response = await invoke(handler, query);
 
       expect(response.statusCode).toBe(502);
+      expect(logs()).toContain(
+        "Snipcart payment confirmation returned no usable returnUrl",
+      );
       expect(response.body.returnUrl).toBeUndefined();
+    });
+
+    it("answers 502 without logging the reply when Snipcart's confirmation is not valid JSON", async () => {
+      // A parse error quotes the text around the fault
+      fetchMock.mockResolvedValue(new Response("<html>Bad Gateway</html>"));
+
+      const response = await invoke(handler, query);
+
+      expect(response.statusCode).toBe(502);
+      expect(logs()).toContain(
+        "Snipcart payment confirmation response is not valid JSON",
+      );
+      expect(logs()).not.toContain("Bad Gateway");
     });
   });
 

@@ -142,8 +142,15 @@ async function confirmWithSnipcart(
     );
   }
 
-  const { returnUrl } = (await response.json()) as { returnUrl?: string };
-  if (!returnUrl || !returnUrl.startsWith("https://")) {
+  let confirmation: { returnUrl?: unknown } | null;
+  try {
+    confirmation = (await response.json()) as { returnUrl?: unknown } | null;
+  } catch {
+    // The parse error is dropped: its message quotes Snipcart's reply
+    throw new Error("Snipcart payment confirmation response is not valid JSON");
+  }
+  const returnUrl = confirmation?.returnUrl;
+  if (typeof returnUrl !== "string" || !returnUrl.startsWith("https://")) {
     throw new Error(
       "Snipcart payment confirmation returned no usable returnUrl",
     );

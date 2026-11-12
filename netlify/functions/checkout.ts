@@ -98,14 +98,14 @@ async function fetchPaymentSession(
     );
   }
 
-  let session: Partial<SnipcartPaymentSession>;
+  let session: Partial<SnipcartPaymentSession> | null;
   try {
-    session = (await response.json()) as Partial<SnipcartPaymentSession>;
+    session = (await response.json()) as Partial<SnipcartPaymentSession> | null;
   } catch {
     // The parse error is dropped: its message quotes the body, which holds customer details
     throw new Error("Snipcart payment session response is not valid JSON");
   }
-  if (typeof session.id !== "string" || !UUID_PATTERN.test(session.id)) {
+  if (typeof session?.id !== "string" || !UUID_PATTERN.test(session.id)) {
     throw new Error("Snipcart payment session has no valid ID");
   }
   if (typeof session.invoice?.amount !== "number") {
